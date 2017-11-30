@@ -18,10 +18,10 @@ class ControllerImpl {
 
 public:
     ControllerImpl(const ros::NodeHandle &nodeHandle) : n(nodeHandle) {
-
-        prev_R_d << 0, 0, 0,
-                0, 0, 0,
-                0, 0, 0;
+        t_frame = 0;
+        prev_R_d << 1, 0, 0,
+                0, 1, 0,
+                0, 0, 1;
         prev_Omega_d << 0, 0, 0;
 
         geoControllerUtils utils;
@@ -41,10 +41,12 @@ public:
         kr = utils.get(n, "controller/kr");
         kOmega = utils.get(n, "controller/kOmega");
 
-        x0 = utils.getX0();
-        v0 = utils.getV0();
-        R0 = utils.getR0();
-        Omega0 = utils.getOmega0();
+        x0 << utils.get(n, "trajectory/x0/x01"), utils.get(n, "trajectory/x0/x02"), utils.get(n, "trajectory/x0/x03");
+        v0 << utils.get(n, "trajectory/v0/v01"), utils.get(n, "trajectory/v0/v02"), utils.get(n, "trajectory/v0/v03");
+        R0 << utils.get(n, "trajectory/R0/R0_r1/r1_1"), utils.get(n, "trajectory/R0/R0_r1/r1_2"), utils.get(n, "trajectory/R0/R0_r1/r1_3"),
+                utils.get(n, "trajectory/R0/R0_r2/r2_1"), utils.get(n, "trajectory/R0/R0_r2/r2_2"), utils.get(n, "trajectory/R0/R0_r2/r2_3"),
+                utils.get(n, "trajectory/R0/R0_r3/r3_1"), utils.get(n, "trajectory/R0/R0_r3/r3_2"), utils.get(n, "trajectory/R0/R0_r3/r3_3");
+        Omega0 << utils.get(n, "trajectory/Omega0/Omega01"), utils.get(n, "trajectory/Omega0/Omega02"), utils.get(n, "trajectory/Omega0/Omega03");
 
     }
 
@@ -66,14 +68,18 @@ public:
      * @param e
      * @return
      */
-    Vector3d getForceVector(const ros::TimerEvent &e) {
-        this->t = e.current_real.sec;
-        this->dt = t - e.last_real.sec;
+    Vector3d getForceVector(float dt) {
+        t_frame =+ dt;
+
+        this->dt = dt;
 
         calculate_x_desired();
+        calculate_ex_ev();
         calculate_Rd();
         calculate_Omega_desired();
-        calculateErrors();
+        calculate_eR_eOmega();
+
+        //calculate the force vector
         Vector3d f_temp = -(-kx * ex - kv * ev - m * g * e3 + m * xddot_d);
         Vector3d Re3 = R * e3;
         f = f_temp.cwiseProduct(Re3);
@@ -88,11 +94,14 @@ public:
         return M;
     }
 
-    void calculateErrors() {
+    void calculate_ex_ev() {
         ex = x - x_d;
         ev = v - xdot_d;
+    }
+
+    void calculate_eR_eOmega() {
         Matrix3d eR_temp = 0.5 * (Eigen::Transpose<Matrix3d>(R_d) * R - Eigen::Transpose<Matrix3d>(R) * R_d);
-        Vector3d eR = utils.getVeeMap(eR_temp);
+        eR = utils.getVeeMap(eR_temp);
         eOmega = Omega - Eigen::Transpose<Matrix3d>(R) * R_d * Omega_d;
     }
 
@@ -100,7 +109,7 @@ public:
     void calculate_Rd() {
         Vector3d b3_d_nume = -kx * ex - kv * ev - m * g * e3 + m * xddot_d;
         b3_d = b3_d_nume / b3_d_nume.norm();
-        b1_d << cos(M_PI * t), sin(M_PI * t), 0;
+        b1_d << cos(M_PI * t_frame), sin(M_PI * t_frame), 0;
         Vector3d b2_d_nume = b3_d.cross(b1_d);
         b2_d = b2_d_nume / b2_d_nume.norm();
         R_d << b2_d.cross(b3_d), b2_d, b3_d;
@@ -109,30 +118,32 @@ public:
     }
 
     void calculate_Omega_desired() {
-        Omega_d = utils.getVeeMap(R_dot_d * Eigen::Inverse<Matrix3d>(prev_R_d));
+        Matrix3d inv_prev_R_d = Eigen::Inverse<Matrix3d>(prev_R_d);
+        Omega_d = utils.getVeeMap(R_dot_d * inv_prev_R_d);
         Omega_dot_d = (Omega_d - prev_Omega_d) / dt;
         prev_Omega_d = Omega_d;
     }
 
     void calculate_x_desired() {
-        x_d[0] = 0.4 * t;
-        x_d[1] = 0.4 * sin(M_PI * t);
-        x_d[2] = 0.6 * cos(M_PI * t);
+        ROS_INFO("##### t: %f ######\n",this->t_frame);
+        x_d[0] = 0.4 * t_frame;
+        x_d[1] = 0.4 * sin(M_PI * t_frame);
+        x_d[2] = 0.6 * cos(M_PI * t_frame);
 
         xdot_d[0] = 0.4;
-        xdot_d[1] = 0.4 * cos(M_PI * t);
-        xdot_d[2] = -0.6 * sin(M_PI * t);
+        xdot_d[1] = 0.4 * cos(M_PI * t_frame);
+        xdot_d[2] = -0.6 * sin(M_PI * t_frame);
 
         xddot_d[0] = 0;
-        xddot_d[1] = -0.4 * sin(M_PI * t);
-        xddot_d[2] = -0.6 * cos(M_PI * t);
+        xddot_d[1] = -0.4 * sin(M_PI * t_frame);
+        xddot_d[2] = -0.6 * cos(M_PI * t_frame);
     }
-
 
 private:
     ros::NodeHandle n;
     float dt;
-    float t;
+//    float t;
+    double t_frame;
 
     // desired parameters
     Vector3d x_d;
@@ -158,6 +169,7 @@ private:
     Vector3d v0;
     Matrix3d R0;
     Vector3d Omega0;
+    Vector3d* test_v;
 
     // error vectors
     Vector3d ex;

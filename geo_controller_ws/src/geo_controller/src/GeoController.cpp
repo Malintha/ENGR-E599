@@ -27,6 +27,8 @@ public:
         m_serviceLand = nh.advertiseService("land", &GeoController::land, this);
         dynamics = new dynamicsImpl(n, m_worldFrame, m_bodyFrame);
         controllerImpl  = new ControllerImpl(n);
+        ROS_INFO("################GeoController Initialized!!\n");
+
     };
 
 
@@ -35,28 +37,27 @@ public:
         ros::Timer timer = node.createTimer(ros::Duration(1.0 / frequency), &GeoController::iteration, this);
         ros::spin();
     }
-
     void iteration(const ros::TimerEvent &e) {
         float dt = e.current_real.toSec() - e.last_real.toSec();
 
         switch (m_state) {
             case TakingOff: {
                 tf::StampedTransform transform;
-                ROS_INFO("In taking off\n");
+                ROS_INFO("In taking off. thrust: %f\n",m_thrust);
                 geometry_msgs::Twist msg;
 //                msg.linear.x = 20000; //forward (pitch)
 //                msg.linear.z = 20000; //sideways (roll)
-                m_pubNav.publish(msg);
+//                m_pubNav.publish(msg);
 
                 m_listener.lookupTransform(m_worldFrame, m_bodyFrame, ros::Time(0), transform);
-                if (transform.getOrigin().z() > m_startZ + 0.05 || m_thrust > 50000)
+                if (transform.getOrigin().z() > m_startZ + 0.3 || m_thrust > 10000)
                 {
                     m_state = Automatic;
                     m_thrust = 0;
                 }
                 else
                 {
-                    m_thrust += 10000 * dt;
+                    m_thrust += 10000 * 0.02;
                     geometry_msgs::Twist msg;
                     msg.linear.z = m_thrust;
                     m_pubNav.publish(msg);
@@ -80,6 +81,7 @@ public:
                 m_listener.lookupTransform(m_worldFrame, m_bodyFrame, ros::Time(0), transform);
 
                 // get x, v, r, Omega from the dynamicsImpl - done
+                ROS_INFO("dt: %f",dt);
                 dynamics->setdt(dt);
                 Vector3d* x_arr = dynamics->get_x_v_Omega();
                 Vector3d x = x_arr[0];
@@ -87,8 +89,18 @@ public:
                 Vector3d Omega = x_arr[3];
                 Matrix3d R = dynamics->getR();
                 // set values in the controllerImpl
-                controllerImpl->setDynamicsValues(x,x_dot,R,Omega);
-                controllerImpl->getForceVector(e);
+                std::cout << "R: "<<R<<std::endl;
+                if (R.minCoeff() != 0) {
+                    controllerImpl->setDynamicsValues(x,x_dot,R,Omega);
+                    Vector3d forceVec = controllerImpl->getForceVector(dt);
+                    Vector3d momentVec = controllerImpl->getMomentVector();
+                    std::cout << "forceVect: "<<momentVec<<std::endl;
+                }
+
+
+                geometry_msgs::Twist msg;
+                m_pubNav.publish(msg);
+
 //                controllerImpl->getMomentVec(e);
 
 
@@ -105,6 +117,7 @@ public:
             case Idle: {
                 ROS_INFO("### Drone is in idle state ###");
                 geometry_msgs::Twist msg;
+//                msg.linear.z = 10000;
                 m_pubNav.publish(msg);
             }
                 break;
@@ -155,7 +168,7 @@ int main(int argc, char **argv) {
     std::string frame;
     n.getParam("/crazyflie/geocontroller/frame", frame);
     double frequency;
-    n.param("frequency", frequency, 20.0);
+    n.param("frequency", frequency, 50.0);
 
     ROS_INFO("### Initializing geoController. worldFrame:%s bodyFrame%s\n",worldFrame.data(), frame.data());
 

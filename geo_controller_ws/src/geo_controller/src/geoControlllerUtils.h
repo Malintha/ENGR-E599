@@ -14,7 +14,6 @@
 using namespace Eigen;
 
 
-
 class geoControllerUtils {
 public:
     geoControllerUtils() {}
@@ -66,7 +65,11 @@ public:
     Vector3d getV0() {
         return v0;
     }
-    
+
+    Vector3d *getTestV() {
+        return &v0;
+    }
+
 private:
     Vector3d x0;
     Vector3d v0;

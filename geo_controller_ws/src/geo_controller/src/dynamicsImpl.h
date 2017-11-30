@@ -24,7 +24,7 @@ public:
     dynamicsImpl(const ros::NodeHandle &n, std::string worldFrame, std::string bodyFrame) :
             worldFrame(worldFrame),
             bodyFrame(bodyFrame) {
-        n.getParam("/cf/crazyflie_add/tf_prefix", tf_prefix);
+        n.getParam("/crazyflie//crazyflie_add/tf_prefix", tf_prefix);
         ROS_INFO("### Initialized dynamicsImpl worldFrame:%s bodyFrame%s\n", worldFrame.data(), bodyFrame.data());
         transformListener.waitForTransform(worldFrame, bodyFrame, ros::Time(0), ros::Duration(10.0));
 
