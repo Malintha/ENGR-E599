@@ -68,8 +68,8 @@ public:
      * @param e
      * @return
      */
-    Vector3d getForceVector(float dt) {
-        t_frame =+ dt;
+    Vector3d getForceVector(float dt, double time_frame) {
+        t_frame = time_frame;
 
         this->dt = dt;
 
@@ -125,10 +125,12 @@ public:
     }
 
     void calculate_x_desired() {
-        ROS_INFO("##### t: %f ######\n",this->t_frame);
+//        ROS_INFO("##### t: %f ######\n",this->t_frame);
         x_d[0] = 0.4 * t_frame;
         x_d[1] = 0.4 * sin(M_PI * t_frame);
         x_d[2] = 0.6 * cos(M_PI * t_frame);
+
+//        std::cout<<t_frame<<" , "<<x_d[0]<<","<<x_d[1]<<","<<x_d[2]<< "\r\n";
 
         xdot_d[0] = 0.4;
         xdot_d[1] = 0.4 * cos(M_PI * t_frame);

@@ -1,0 +1,5 @@
+x_d = csvread('x_d_1.csv');
+force = csvread('f_vec.csv');
+% plot3(m(:,2),m(:,3),m(:,4)), xlabel('x'),ylabel('y'),zlabel('z'), figure;
+plot(x_d(1:145,1),x_d(1:145,4)), figure, xlabel('time'), ylabel('x_desired');
+plot(x_d(1:145,1),force(:,3)), figure, xlabel('time'), ylabel('');
