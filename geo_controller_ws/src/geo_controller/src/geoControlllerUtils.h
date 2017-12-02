@@ -16,7 +16,25 @@ using namespace Eigen;
 
 class geoControllerUtils {
 public:
-    geoControllerUtils() {}
+    geoControllerUtils() {
+        thrustRPMMap.insert(std::pair<double, double >(0.0,0));
+        thrustRPMMap.insert(std::pair<double, double >(1.6,4485));
+        thrustRPMMap.insert(std::pair<double, double >(4.8,7570));
+        thrustRPMMap.insert(std::pair<double, double >(7.9,9374));
+        thrustRPMMap.insert(std::pair<double, double >(10.9,10885));
+        thrustRPMMap.insert(std::pair<double, double >(13.9,12277));
+        thrustRPMMap.insert(std::pair<double, double >(17.3,13522));
+        thrustRPMMap.insert(std::pair<double, double >(21.0,14691));
+        thrustRPMMap.insert(std::pair<double, double >(24.4,15924));
+        thrustRPMMap.insert(std::pair<double, double >(28.6,17174));
+        thrustRPMMap.insert(std::pair<double, double >(32.8,18179));
+        thrustRPMMap.insert(std::pair<double, double >(37.3,19397));
+        thrustRPMMap.insert(std::pair<double, double >(41.7,20539));
+        thrustRPMMap.insert(std::pair<double, double >(46.0, 21692));
+        thrustRPMMap.insert(std::pair<double, double >(51.9,22598));
+        thrustRPMMap.insert(std::pair<double, double >(57.9,23882));
+
+    }
 
     double get(const ros::NodeHandle &n, const std::string &name) {
         const std::string node_prefix = "/crazyflie/geocontroller/";
@@ -24,6 +42,26 @@ public:
         double value;
         n.getParam(key, value);
         return value;
+    }
+
+    double getTargetRPM(double targetThrust) {
+        double x0, x1, y0, y1, targetRPM;
+        targetRPM = 0;
+        if(targetThrust != 0) {
+            std::map<double, double>::iterator it = thrustRPMMap.begin();
+            for (it = thrustRPMMap.begin(); it != thrustRPMMap.end(); ++it) {
+                if (it->first > targetThrust) {
+                    std::map<double, double>::iterator it_prev = it--;
+                    y0 = it_prev->first;
+                    x0 = it_prev->second;
+                    y1 = it->first;
+                    x1 = it->second;
+                    break;
+                }
+            }
+            targetRPM = x1 - (y1 - targetThrust) * (x1 - x0) / (y1 - y0);
+        }
+        return targetRPM;
     }
 
     void initializeMatrices(const ros::NodeHandle &n) {
@@ -75,5 +113,6 @@ private:
     Vector3d v0;
     Matrix3d R0;
     Vector3d Omega0;
+    std::map<double,double> thrustRPMMap;
 };
 

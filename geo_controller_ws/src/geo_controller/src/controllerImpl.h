@@ -41,6 +41,14 @@ public:
         kr = utils.get(n, "controller/kr");
         kOmega = utils.get(n, "controller/kOmega");
 
+
+        coeffMat << 1, 1, 1, 1,
+                    0, -d, 0, d,
+                    d, 0, -d, 0,
+                    -ctf, ctf, -ctf, ctf;
+
+        inv_coeffMat = Eigen::Inverse<Matrix4d>(coeffMat);
+
         x0 << utils.get(n, "trajectory/x0/x01"), utils.get(n, "trajectory/x0/x02"), utils.get(n, "trajectory/x0/x03");
         v0 << utils.get(n, "trajectory/v0/v01"), utils.get(n, "trajectory/v0/v02"), utils.get(n, "trajectory/v0/v03");
         R0 << utils.get(n, "trajectory/R0/R0_r1/r1_1"), utils.get(n, "trajectory/R0/R0_r1/r1_2"), utils.get(n, "trajectory/R0/R0_r1/r1_3"),
@@ -141,6 +149,20 @@ public:
         xddot_d[2] = -0.6 * cos(M_PI * t_frame);
     }
 
+    Vector4d getMotorForceVector(double totForce, Vector3d momentVec){
+        Vector4d f_m_vec(4,1);
+        Vector4d mot_force_vec(4,1);
+        f_m_vec << totForce, momentVec[0], momentVec[1], momentVec[2];
+        mot_force_vec = inv_coeffMat*f_m_vec;
+        return mot_force_vec;
+    }
+
+    double getAttitudeError() {
+        Matrix3d eye = Matrix<double, 3, 3>::Identity();
+        double att_error = (0.5*(eye - Eigen::Transpose<Matrix3d>(R_d)*R)).trace();
+        return att_error >= 0 ? att_error: 0;
+    }
+
 private:
     ros::NodeHandle n;
     float dt;
@@ -204,5 +226,7 @@ private:
     Vector3d prev_Omega_d;
     bool isFirst = true;
     geoControllerUtils utils;
+    Matrix4d coeffMat;
+    Matrix4d inv_coeffMat;
 
 };

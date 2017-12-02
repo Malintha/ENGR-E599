@@ -18,8 +18,8 @@ class GeoController {
 
 public:
     GeoController(const std::string &worldFrame, const std::string &frame,
-                  const ros::NodeHandle &n) : m_serviceTakeoff(), m_serviceLand(), m_state(Idle), m_thrust(0),
-                                              m_startZ(0.0), m_worldFrame(worldFrame), m_bodyFrame(frame) {
+                  const ros::NodeHandle &n) : m_serviceTakeoff(), m_serviceLand(), m_state(Automatic), m_thrust(0),
+                                              m_startZ(-1.0), m_worldFrame(worldFrame), m_bodyFrame(frame) {
         ros::NodeHandle nh;
         m_listener.waitForTransform(m_worldFrame, m_bodyFrame, ros::Time(0), ros::Duration(10.0));
         m_pubNav = nh.advertise<geometry_msgs::Twist>("cmd_vel", 1);
@@ -28,6 +28,7 @@ public:
         dynamics = new dynamicsImpl(n, m_worldFrame, m_bodyFrame);
         controllerImpl  = new ControllerImpl(n);
         counter_started = false;
+        utils = new geoControllerUtils;
         ROS_INFO("################GeoController Initialized!!\n");
 
     };
@@ -47,27 +48,25 @@ public:
         float dt = e.current_real.toSec() - e.last_real.toSec();
         if(dt > 10)
             dt = 0.02;
-        t_frame += dt;
+
         switch (m_state) {
             case TakingOff: {
                 tf::StampedTransform transform;
                 ROS_INFO("In taking off. thrust: %f\n",m_thrust);
-                geometry_msgs::Twist msg;
-//                msg.linear.x = 20000; //forward (pitch)
-//                msg.linear.z = 20000; //sideways (roll)
-//                m_pubNav.publish(msg);
-
                 m_listener.lookupTransform(m_worldFrame, m_bodyFrame, ros::Time(0), transform);
-                if (transform.getOrigin().z() > m_startZ + 0.3 || m_thrust > 50000)
+                if (transform.getOrigin().z() > m_startZ + 0.5 || m_thrust > 50000)
+
                 {
                     m_state = Automatic;
-                    m_thrust = 0;
                 }
                 else
                 {
-                    m_thrust += 10000 * 0.02;
+                    m_thrust += 10000 * 0.01;
+//                    if(m_thrust>50000)
+//                        m_thrust = 45000;
                     geometry_msgs::Twist msg;
                     msg.linear.z = m_thrust;
+                    std::cout<<"taking off: thrust: "<<m_thrust<<" z: "<<transform.getOrigin().z()<<"\n";
                     m_pubNav.publish(msg);
                 }
             }
@@ -84,49 +83,59 @@ public:
             }
 
             case Automatic: {
-                // get the current position of the drone
                 tf::StampedTransform transform;
                 m_listener.lookupTransform(m_worldFrame, m_bodyFrame, ros::Time(0), transform);
 
-                // get x, v, r, Omega from the dynamicsImpl - done
                 dynamics->setdt(dt);
                 Vector3d* x_arr = dynamics->get_x_v_Omega();
                 Vector3d x = x_arr[0];
                 Vector3d x_dot = x_arr[1];
                 Vector3d Omega = x_arr[3];
                 Matrix3d R = dynamics->getR();
-                // set values in the controllerImpl
-//                std::cout << "R: "<<R<<std::endl;
+
+                Vector3d forceVec;
+                forceVec[0] = 0; forceVec[2] = 0; forceVec[2] = 0;
+                Vector3d momentVec;
+                momentVec[0] = 0; momentVec[2] = 0; momentVec[2] = 0;
+
                 if (R.minCoeff() != 0) {
+
+                    t_frame += dt;
+
                     controllerImpl->setDynamicsValues(x,x_dot,R,Omega);
-//                    ROS_INFO("TFRAME: %f ",t_frame);
-                    Vector3d forceVec = controllerImpl->getForceVector(dt,t_frame);
-                    Vector3d momentVec = controllerImpl->getMomentVector();
-                    std::cout << "## force Vec: "<<forceVec[0]<<","<<forceVec[1]<<","<<forceVec[2]<<std::endl;
-//                    std::cout << "## moment Vec: "<<momentVec<<std::endl;
+                    forceVec = controllerImpl->getForceVector(dt,t_frame);
+                    momentVec = controllerImpl->getMomentVector();
+//                    std::cout << "## force Vec: "<<t_frame<<" , "<<forceVec[0]<<","<<forceVec[1]<<","<<forceVec[2]<<std::endl;
+//                    std::cout << "## moment Vec: "<<t_frame<<" , "<<momentVec[0]<<","<<momentVec[1]<<","<<momentVec[2]<<std::endl;
                 }
+                double f = forceVec.norm();
+                Vector4d mot_force_vec = controllerImpl->getMotorForceVector(f, momentVec);
 
+                double RPM1 = utils->getTargetRPM(mot_force_vec[0]);
+                double RPM2 = utils->getTargetRPM(mot_force_vec[1]);
+                double RPM3 = utils->getTargetRPM(mot_force_vec[2]);
+                double RPM4 = utils->getTargetRPM(mot_force_vec[3]);
 
+//                std::cout << "automatic: Totalforce:" << f <<" f1: "<<mot_force_vec[0]<<" f2: "<<mot_force_vec[1]<<" f3: "<<mot_force_vec[2]<<" f4: "<<mot_force_vec[3] << " rpm1: " << RPM1 << " rpm2: " << RPM2 << " rpm3: "
+//                          << RPM3 << " rpm4: " << RPM4 << "\n";
+
+                std::cout << "Attitude error: "<<controllerImpl->getAttitudeError()<<"\n";
                 geometry_msgs::Twist msg;
-                m_pubNav.publish(msg);
 
-//                controllerImpl->getMomentVec(e);
-
-
-                // set thrust to the drone
-//                geometry_msgs::Twist msg;
-//                msg.linear.x = m_pidX.update(0, targetDrone.pose.position.x);
-//                msg.linear.y = m_pidY.update(0.0, targetDrone.pose.position.y);
-//                msg.linear.z = m_pidZ.update(0.0, targetDrone.pose.position.z);
-
-
+//                m_pubNav.publish(msg);
 
             }
                 break;
             case Idle: {
-                ROS_INFO("### Drone is in idle state ###");
+                float dt = e.current_real.toSec() - e.last_real.toSec();
+                if(dt > 1)
+                    dt = 0.02;
+                dynamics->setdt(dt);
+                Matrix3d temp_R = dynamics->getR();
+                if(temp_R.minCoeff() != 0) {
+                    ROS_INFO("Reading from IMU. Ready to fly.");
+                }
                 geometry_msgs::Twist msg;
-                msg.linear.z = 10000;
                 m_pubNav.publish(msg);
             }
                 break;
@@ -151,6 +160,7 @@ private:
     ControllerImpl* controllerImpl;
     double t_frame;
     bool counter_started;
+    geoControllerUtils* utils;
 
     bool takeoff(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res) {
         ROS_INFO("Takeoff requested!");
@@ -181,7 +191,7 @@ int main(int argc, char **argv) {
     double frequency;
     n.param("frequency", frequency, 50.0);
 
-    ROS_INFO("### Initializing geoController. worldFrame:%s bodyFrame%s\n",worldFrame.data(), frame.data());
+    ROS_INFO("### Initializing geoController. worldFrame:%s bodyFrame %s\n",worldFrame.data(), frame.data());
 
     GeoController controller(worldFrame, frame, n);
     controller.run(frequency);

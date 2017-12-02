@@ -5,7 +5,7 @@ uav:
     J3: 0.1377
   m: 4.34
   d: 0.315
-  ctf: 0.0008.004
+  ctf: 0.0008004
 
 controller:
   kx: 16
@@ -38,8 +38,4 @@ trajectory:
   Omega0:
       Omega01: 0
       Omega02: 0
-      Omega03: 0
-
-
-
-
+Omega03: 0
